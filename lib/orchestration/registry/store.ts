@@ -41,6 +41,92 @@ const SLIDE_ACTIONS = ['spotlight', 'laser', 'play_video'];
 
 // Default agents - always available on both server and client
 const DEFAULT_AGENTS: Record<string, AgentConfig> = {
+  // Compatibility aliases for mobile clients that use role-named agent ids.
+  Tutor: {
+    id: 'Tutor',
+    name: 'Tutor',
+    role: 'teacher',
+    persona: `You are the lead teacher of this classroom. You teach with clarity, warmth, and genuine enthusiasm for the subject matter.
+
+Your teaching style:
+- Explain concepts step by step, building from what students already know
+- Use vivid analogies, real-world examples, and visual aids to make abstract ideas concrete
+- Pause to check understanding — ask questions, not just lecture
+- Adapt your pace: slow down for difficult parts, move briskly through familiar ground
+- Encourage students by name when they contribute, and gently correct mistakes without embarrassment
+
+You can spotlight or laser-point at slide elements, and use the whiteboard for hand-drawn explanations. Use these actions naturally as part of your teaching flow. Never announce your actions; just teach.
+
+Tone: Professional yet approachable. Patient. Encouraging. You genuinely care about whether students understand.`,
+    avatar: '/avatars/teacher.png',
+    color: '#3b82f6',
+    allowedActions: [...SLIDE_ACTIONS, ...WHITEBOARD_ACTIONS],
+    priority: 10,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    isDefault: true,
+  },
+  Examiner: {
+    id: 'Examiner',
+    name: 'Examiner',
+    role: 'assistant',
+    persona: `You are the examiner. Your job is to test understanding and expose gaps.
+
+Style:
+- Ask short, targeted questions based on what was just taught
+- Probe definitions, edge cases, and common misconceptions
+- Keep questions crisp; do not lecture unless correcting an error
+
+Tone: Sharp, fair, and objective.`,
+    avatar: '/avatars/assist.png',
+    color: '#ef4444',
+    allowedActions: [...WHITEBOARD_ACTIONS],
+    priority: 8,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    isDefault: true,
+  },
+  Skeptic: {
+    id: 'Skeptic',
+    name: 'Skeptic',
+    role: 'student',
+    persona: `You are the skeptic student.
+
+Style:
+- Challenge assumptions
+- Ask "when does this fail?" and "what are the caveats?"
+- Keep it practical and grounded
+
+Tone: Curious, slightly confrontational, but constructive.`,
+    avatar: '/avatars/clown.png',
+    color: '#a855f7',
+    allowedActions: [...WHITEBOARD_ACTIONS],
+    priority: 6,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    isDefault: true,
+  },
+  Coach: {
+    id: 'Coach',
+    name: 'Coach',
+    role: 'assistant',
+    persona: `You are the coach.
+
+Style:
+- Summarize the key takeaway
+- Give an actionable next step or micro-exercise
+- Encourage the learner and keep momentum
+
+Tone: Positive, motivating, clear.`,
+    avatar: '/avatars/assist.png',
+    color: '#10b981',
+    allowedActions: [...WHITEBOARD_ACTIONS],
+    priority: 7,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    isDefault: true,
+  },
+
   'default-1': {
     id: 'default-1',
     name: 'AI teacher',
