@@ -6,9 +6,13 @@ import type { ParsedPdfContent } from '@/lib/types/pdf';
 import { createLogger } from '@/lib/logger';
 import { apiError, apiSuccess } from '@/lib/server/api-response';
 import { validateUrlForSSRF } from '@/lib/server/ssrf-guard';
+import { requireStudyApiBearerAuth } from '@/lib/server/study-api-auth';
 const log = createLogger('Parse PDF');
 
 export async function POST(req: NextRequest) {
+  const authError = requireStudyApiBearerAuth(req);
+  if (authError) return authError;
+
   try {
     const contentType = req.headers.get('content-type') || '';
     if (!contentType.includes('multipart/form-data')) {
