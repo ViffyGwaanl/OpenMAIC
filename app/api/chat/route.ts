@@ -19,6 +19,7 @@ import { resolveApiKey, resolveBaseUrl, resolveProxy } from '@/lib/server/provid
 import type { StatelessChatRequest, StatelessEvent } from '@/lib/types/chat';
 import type { ThinkingConfig } from '@/lib/types/provider';
 import { apiError } from '@/lib/server/api-response';
+import { requireStudyApiBearerAuth } from '@/lib/server/study-api-auth';
 import { createLogger } from '@/lib/logger';
 import { validateUrlForSSRF } from '@/lib/server/ssrf-guard';
 const log = createLogger('Chat API');
@@ -44,6 +45,10 @@ export const maxDuration = 60;
  */
 export async function POST(req: NextRequest) {
   const encoder = new TextEncoder();
+
+  // Study API protection (bearer token). Keep costs private when exposed publicly.
+  const authError = requireStudyApiBearerAuth(req);
+  if (authError) return authError;
 
   try {
     const body: StatelessChatRequest = await req.json();
