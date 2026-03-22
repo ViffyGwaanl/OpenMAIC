@@ -1046,9 +1046,19 @@ export function parseModelString(modelString: string): {
   const colonIndex = modelString.indexOf(':');
 
   if (colonIndex > 0) {
+    const rawProvider = modelString.slice(0, colonIndex);
+    const rawModelId = modelString.slice(colonIndex + 1);
+
+    // Backward-compat: historical configs used "openai-responses:*".
+    // Treat it as standard OpenAI provider for now.
+    const providerId =
+      rawProvider === 'openai-responses' || rawProvider === 'openai_responses'
+        ? 'openai'
+        : rawProvider;
+
     return {
-      providerId: modelString.slice(0, colonIndex) as ProviderId,
-      modelId: modelString.slice(colonIndex + 1),
+      providerId: providerId as ProviderId,
+      modelId: rawModelId,
     };
   }
 
