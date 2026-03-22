@@ -179,43 +179,150 @@ export async function generateClassroom(
   const api = createStageAPI(store);
 
   log.info('Stage 2: Generating scene content and actions...');
-  let generatedScenes = 0;
 
-  for (const [index, outline] of outlines.entries()) {
-    const safeOutline = applyOutlineFallbacks(outline, true);
-    const progressStart = 30 + Math.floor((index / Math.max(outlines.length, 1)) * 60);
+  const totalScenes = outlines.length;
+  const concurrency = Math.max(1, Number.parseInt(process.env.CLASSROOM_SCENE_CONCURRENCY || '3', 10) || 3);
+  const seedCount = Math.max(0, Number.parseInt(process.env.CLASSROOM_SCENE_SEED_COUNT || '2', 10) || 2);
+  const effectiveSeedCount = Math.min(seedCount, totalScenes);
+
+  // A compact course plan to keep later scenes aligned with earlier ones.
+  const coursePlan = outlines
+    .map((o, i) => {
+      const points = (o.keyPoints || []).slice(0, 4).map((p) => `- ${p}`).join('\n');
+      return `Scene ${i + 1}: ${o.title}\n${points}`;
+    })
+    .join('\n\n');
+
+  function buildContinuityContext(sceneIndex: number): string {
+    const prev = outlines
+      .slice(Math.max(0, sceneIndex - 4), sceneIndex)
+      .map((o, i) => {
+        const idx = Math.max(0, sceneIndex - 4) + i + 1;
+        const points = (o.keyPoints || []).slice(0, 3).map((p) => `- ${p}`).join('\n');
+        return `Previously covered (Scene ${idx}): ${o.title}\n${points}`;
+      })
+      .join('\n\n');
+
+    return [
+      'Course plan (for consistency, do not contradict it):',
+      coursePlan,
+      prev ? `\n\n${prev}` : '',
+      '\n\nRules:',
+      '- Keep terminology/definitions consistent across scenes.',
+      '- Do not assume concepts that were not introduced in earlier scenes.',
+      '- Avoid repeating large chunks from earlier scenes.',
+    ].join('\n');
+  }
+
+  const results: Array<{
+    index: number;
+    outlineTitle: string;
+    outline: ReturnType<typeof applyOutlineFallbacks>;
+    content: Awaited<ReturnType<typeof generateSceneContent>> | null;
+    actions: Awaited<ReturnType<typeof generateSceneActions>> | null;
+  }> = [];
+
+  let completed = 0;
+  async function generateOne(index: number) {
+    const safeOutline = applyOutlineFallbacks(outlines[index]!, true);
+
+    const continuity = buildContinuityContext(index);
+    const wrappedAiCall: AICallFn = async (systemPrompt, userPrompt, images) => {
+      return aiCall(systemPrompt, `${userPrompt}\n\n---\n${continuity}`, images);
+    };
+
+    const content = await generateSceneContent(safeOutline, wrappedAiCall);
+    if (!content) {
+      return { index, outlineTitle: safeOutline.title, outline: safeOutline, content: null, actions: null };
+    }
+    const actions = await generateSceneActions(safeOutline, content, wrappedAiCall);
+    return { index, outlineTitle: safeOutline.title, outline: safeOutline, content, actions };
+  }
+
+  // Simple concurrency-limited mapper (no extra dependency).
+  async function mapWithConcurrency<T>(items: T[], limit: number, fn: (item: T) => Promise<void>) {
+    const queue = [...items];
+    const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+      while (queue.length) {
+        const item = queue.shift();
+        if (item === undefined) return;
+        await fn(item);
+      }
+    });
+    await Promise.all(workers);
+  }
+
+  // Seed a few early scenes sequentially (best coherence), then parallelize the rest.
+  for (let i = 0; i < effectiveSeedCount; i += 1) {
+    await options.onProgress?.({
+      step: 'generating_scenes',
+      progress: 31,
+      message: `Generating seed scene ${i + 1}/${totalScenes}: ${outlines[i]!.title}`,
+      scenesGenerated: completed,
+      totalScenes,
+    });
+
+    const r = await generateOne(i);
+    results.push(r);
+    completed += 1;
 
     await options.onProgress?.({
       step: 'generating_scenes',
-      progress: Math.max(progressStart, 31),
-      message: `Generating scene ${index + 1}/${outlines.length}: ${safeOutline.title}`,
-      scenesGenerated: generatedScenes,
-      totalScenes: outlines.length,
+      progress: 30 + Math.floor((completed / Math.max(totalScenes, 1)) * 60),
+      message: `Generated ${completed}/${totalScenes} scenes (seed)`,
+      scenesGenerated: completed,
+      totalScenes,
     });
+  }
 
-    const content = await generateSceneContent(safeOutline, aiCall);
-    if (!content) {
-      log.warn(`Skipping scene "${safeOutline.title}" — content generation failed`);
+  const remaining = Array.from({ length: totalScenes - effectiveSeedCount }, (_, k) => k + effectiveSeedCount);
+
+  await options.onProgress?.({
+    step: 'generating_scenes',
+    progress: 40,
+    message: `Generating remaining scenes with concurrency=${concurrency}`,
+    scenesGenerated: completed,
+    totalScenes,
+  });
+
+  await mapWithConcurrency<number>(remaining, concurrency, async (idx) => {
+    const r = await generateOne(idx);
+    results.push(r);
+    completed += 1;
+
+    await options.onProgress?.({
+      step: 'generating_scenes',
+      progress: 30 + Math.floor((completed / Math.max(totalScenes, 1)) * 60),
+      message: `Generated ${Math.min(completed, totalScenes)}/${totalScenes} scenes`,
+      scenesGenerated: Math.min(completed, totalScenes),
+      totalScenes,
+    });
+  });
+
+  // Persist scenes in outline order to keep player navigation stable.
+  let generatedScenes = 0;
+  for (const r of results.sort((a, b) => a.index - b.index)) {
+    if (!r.content || !r.actions) {
+      log.warn(`Skipping scene "${r.outlineTitle}" — generation failed`);
       continue;
     }
 
-    const actions = await generateSceneActions(safeOutline, content, aiCall);
-    log.info(`Scene "${safeOutline.title}": ${actions.length} actions`);
-
-    const sceneId = createSceneWithActions(safeOutline, content, actions, api);
+    log.info(`Scene "${r.outlineTitle}": ${r.actions.length} actions`);
+    const sceneId = createSceneWithActions(r.outline, r.content, r.actions, api);
     if (!sceneId) {
-      log.warn(`Skipping scene "${safeOutline.title}" — scene creation failed`);
+      log.warn(`Skipping scene "${r.outlineTitle}" — scene creation failed`);
       continue;
     }
 
     generatedScenes += 1;
-    const progressEnd = 30 + Math.floor(((index + 1) / Math.max(outlines.length, 1)) * 60);
+    void sceneId;
+
     await options.onProgress?.({
       step: 'generating_scenes',
-      progress: Math.min(progressEnd, 90),
-      message: `Generated ${generatedScenes}/${outlines.length} scenes`,
+      progress: 30 + Math.floor((generatedScenes / Math.max(totalScenes, 1)) * 60),
+      message: `Persisted ${generatedScenes}/${totalScenes} scenes`,
       scenesGenerated: generatedScenes,
-      totalScenes: outlines.length,
+      totalScenes,
     });
   }
 
