@@ -305,9 +305,28 @@ export async function callLLM<T extends GenerateTextParams>(
       // Wrap in thinkingContext so the custom fetch wrapper in providers.ts
       // can read the config and inject vendor-specific body params for
       // OpenAI-compatible providers.
-      const result = await thinkingContext.run(effectiveThinking, () =>
-        generateText(injectedParams),
-      );
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let result: GenerateTextResult<any, any>;
+      try {
+        result = await thinkingContext.run(effectiveThinking, () => generateText(injectedParams));
+      } catch (e) {
+        // Some OpenAI-Responses-compatible gateways reject non-streaming calls.
+        // Fallback to streamText and buffer the full output.
+        const msg = e instanceof Error ? e.message : String(e);
+        if (/stream must be set to true/i.test(msg)) {
+          log.warn(`[${source}] generateText rejected (stream required); retrying with streamText`);
+          const streamParams = injectedParams as unknown as StreamTextParams;
+          const streamed = thinkingContext.run(effectiveThinking, () => streamText(streamParams));
+          let full = '';
+          for await (const chunk of streamed.textStream) {
+            if (chunk) full += chunk;
+          }
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          result = { text: full } as unknown as GenerateTextResult<any, any>;
+        } else {
+          throw e;
+        }
+      }
 
       // Validate result (only when retries are configured)
       if (validate && !validate(result.text)) {
