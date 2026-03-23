@@ -39,6 +39,17 @@ export interface ClassroomGenerationJob {
     scenesCount: number;
   };
   error?: string;
+  errorDetails?: {
+    name?: string;
+    message?: string;
+    reason?: string;
+    lastError?: {
+      name?: string;
+      message?: string;
+      statusCode?: number;
+      responseBodyPreview?: string;
+    };
+  };
 }
 
 function jobFilePath(jobId: string) {
@@ -215,6 +226,7 @@ export async function markClassroomGenerationJobSucceeded(
 export async function markClassroomGenerationJobFailed(
   jobId: string,
   error: string,
+  errorDetails?: ClassroomGenerationJob['errorDetails'],
 ): Promise<ClassroomGenerationJob> {
   return updateClassroomGenerationJob(jobId, {
     status: 'failed',
@@ -222,5 +234,6 @@ export async function markClassroomGenerationJobFailed(
     message: 'Classroom generation failed',
     completedAt: new Date().toISOString(),
     error,
+    ...(errorDetails ? { errorDetails } : {}),
   });
 }
