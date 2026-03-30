@@ -345,7 +345,12 @@ async function runAgentGeneration(
             fullText += text;
             write({
               type: 'text_delta',
-              data: { content: text, messageId },
+              data: {
+                content: text,
+                messageId,
+                agentId,
+                agentName: agentConfig.name,
+              },
             });
             emittedTextCount++;
           } else if (entry.type === 'action') {
@@ -389,7 +394,12 @@ async function runAgentGeneration(
           fullText += text;
           write({
             type: 'text_delta',
-            data: { content: text, messageId },
+            data: {
+              content: text,
+              messageId,
+              agentId,
+              agentName: agentConfig.name,
+            },
           });
         }
       }

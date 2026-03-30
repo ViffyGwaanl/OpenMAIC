@@ -308,7 +308,16 @@ export type StatelessEvent =
       };
     }
   | { type: 'agent_end'; data: { messageId: string; agentId: string } }
-  | { type: 'text_delta'; data: { content: string; messageId?: string } }
+  | {
+      type: 'text_delta';
+      data: {
+        content: string;
+        messageId?: string;
+        // Optional, but helpful for clients. Some deployments only send agent_start.
+        agentId?: string;
+        agentName?: string;
+      };
+    }
   | {
       type: 'action';
       data: {

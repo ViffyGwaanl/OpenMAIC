@@ -63,5 +63,11 @@ next-env.d.ts
 /data
 /logs
 
+# AutoResearch local state
+/autoresearch.jsonl
+/autoresearch.checkpoint.json
+/autoresearch.lock
+/autoresearch.ideas.md
+
 # docs
 /docs
